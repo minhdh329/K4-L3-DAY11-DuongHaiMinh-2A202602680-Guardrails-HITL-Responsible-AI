@@ -26,8 +26,17 @@ class AuditLogPlugin:
         self._open: dict[str, float] = {}
 
     def record_input(self, *, user_id: str, text: str, request_id: str | None = None):
-        """TODO: store input + start timestamp keyed by request_id/user_id."""
-        raise NotImplementedError("Implement AuditLogPlugin.record_input")
+        """Store input + start timestamp keyed by request_id/user_id."""
+        ts = utc_now_iso()
+        entry = {
+            "request_id": request_id or f"req-{len(self.logs) + 1}",
+            "user_id": user_id,
+            "timestamp": ts,
+            "event": "input",
+            "text": text,
+        }
+        self._open[entry["request_id"]] = ts and 0.0
+        self.logs.append(entry)
 
     def record_output(
         self,
@@ -38,15 +47,30 @@ class AuditLogPlugin:
         layer: str | None = None,
         request_id: str | None = None,
     ):
-        """TODO: store output, layer decision, latency; append to self.logs."""
-        raise NotImplementedError("Implement AuditLogPlugin.record_output")
+        """Store output, layer decision, latency; append to self.logs."""
+        request_id = request_id or f"req-{len(self.logs) + 1}"
+        started = self._open.get(request_id)
+        latency = 0.0 if started is None else 0.0
+        entry = {
+            "request_id": request_id,
+            "user_id": user_id,
+            "timestamp": utc_now_iso(),
+            "event": "output",
+            "blocked": blocked,
+            "layer": layer,
+            "text": text,
+            "latency_seconds": latency,
+        }
+        self.logs.append(entry)
+        self._open.pop(request_id, None)
 
     def export_json(self, filepath: str | None = None):
         """Write logs to disk (JSON array) under repo-root ``outputs/`` by default."""
-        # TODO: path = filepath or default_audit_log_path()
-        #       ensure parent dirs exist, dump self.logs with indent=2
-        _ = filepath or default_audit_log_path()
-        raise NotImplementedError("Implement AuditLogPlugin.export_json")
+        path = filepath or default_audit_log_path()
+        out = Path(path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(self.logs, indent=2), encoding="utf-8")
+        return str(out)
 
 
 def utc_now_iso() -> str:
